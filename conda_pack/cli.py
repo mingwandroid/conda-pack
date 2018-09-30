@@ -55,6 +55,18 @@ def build_parser():
                         default='infer',
                         help=("The archival format to use. By default this is "
                               "inferred by the output file extension."))
+    parser.add_argument("--libarchive-format",
+                        help=("Specify the libarchive format at a low-level,"
+                              "sample values: 'ustar', '7zip', 'zip'"
+                              "overrides --format"))
+    parser.add_argument("--libarchive-filter",
+                        help=("Specify the libarchive filter at a low-level,"
+                              "sample values: zstd"
+                              "overrides --format"))
+    parser.add_argument("--libarchive-options",
+                        help=("Specify the libarchive format at a low-level,"
+                              "sample values: zstd:compression-level=22"
+                              "overrides --format"))
     parser.add_argument("--compress-level",
                         type=int,
                         default=4,
@@ -130,6 +142,9 @@ def main(args=None, pack=pack):
                  zip_64=not args.no_zip_64,
                  arcroot=args.arcroot,
                  dest_prefix=args.dest_prefix,
+                 libarchive_format=args.libarchive_format,
+                 libarchive_filter=args.libarchive_filter,
+                 libarchive_options=args.libarchive_options,
                  verbose=not args.quiet,
                  filters=args.filters)
     except CondaPackException as e:
