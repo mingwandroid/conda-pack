@@ -495,12 +495,12 @@ def check_no_editable_packages(prefix, site_packages):
                     location = os.path.normpath(os.path.join(dirname, line))
                     if not location.startswith(prefix):
                         editable_packages.add(line)
-    if editable_packages:
-        msg = ("Cannot pack an environment with editable packages\n"
-               "installed (e.g. from `python setup.py develop` or\n "
-               "`pip install -e`). Editable packages found:\n\n"
-               "%s") % '\n'.join('- %s' % p for p in sorted(editable_packages))
-        raise CondaPackException(msg)
+    #if editable_packages:
+    #    msg = ("Cannot pack an environment with editable packages\n"
+    #           "installed (e.g. from `python setup.py develop` or\n "
+    #           "`pip install -e`). Editable packages found:\n\n"
+    #           "%s") % '\n'.join('- %s' % p for p in sorted(editable_packages))
+    #    raise CondaPackException(msg)
 
 
 def name_to_prefix(name=None):
