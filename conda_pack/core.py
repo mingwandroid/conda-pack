@@ -255,6 +255,8 @@ class CondaEnv(object):
         return output, format
 
     def pack(self, output=None, format='infer', arcroot='', dest_prefix=None,
+             libarchive_format=None,
+             libarchive_filter=None, libarchive_options=None,
              verbose=False, force=False, compress_level=4, zip_symlinks=False,
              zip_64=True):
         """Package the conda environment into an archive file.
@@ -316,6 +318,9 @@ class CondaEnv(object):
         try:
             with os.fdopen(fd, 'wb') as temp_file:
                 with archive(temp_file, temp_path, arcroot, format,
+                             libarchive_format=libarchive_format,
+                             libarchive_filter=libarchive_filter,
+                             libarchive_options=libarchive_options,
                              compress_level=compress_level,
                              zip_symlinks=zip_symlinks,
                              zip_64=zip_64) as arc:
@@ -373,7 +378,8 @@ class File(object):
 
 
 def pack(name=None, prefix=None, output=None, format='infer',
-         arcroot='', dest_prefix=None, verbose=False, force=False,
+         arcroot='', dest_prefix=None, libarchive_format=None,
+         libarchive_filter=None, libarchive_options=None, verbose=False, force=False,
          compress_level=4, zip_symlinks=False, zip_64=True, filters=None):
     """Package an existing conda environment into an archive file.
 
@@ -448,7 +454,8 @@ def pack(name=None, prefix=None, output=None, format='infer',
                 raise CondaPackException("Unknown filter of kind %r" % kind)
 
     return env.pack(output=output, format=format, arcroot=arcroot,
-                    dest_prefix=dest_prefix,
+                    dest_prefix=dest_prefix, libarchive_format=libarchive_format,
+                    libarchive_filter=libarchive_filter, libarchive_options=libarchive_options,
                     verbose=verbose, force=force,
                     compress_level=compress_level,
                     zip_symlinks=zip_symlinks, zip_64=zip_64)

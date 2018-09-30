@@ -17,14 +17,17 @@ _tar_mode = {'tar.gz': 'w:gz',
              'tar.zst': 'zstd:compression-level=22'}
 
 
-def archive(fileobj, filename, arcroot, format, compress_level=4, zip_symlinks=False,
-            zip_64=True):
+def archive(fileobj, filename, arcroot, format, libarchive_format=None, libarchive_filter=None, libarchive_options=None,
+            compress_level=4, zip_symlinks=False, zip_64=True):
     if format == 'zip':
         return ZipArchive(fileobj, filename, arcroot, zip_symlinks=zip_symlinks,
                           zip_64=zip_64)
-    elif format == 'tar.zst':
+    elif format == 'tar.zst' or libarchive_format:
         return TarZstArchive(fileobj, filename, arcroot, _tar_mode[format],
-                          compress_level=compress_level)
+                             format_name=libarchive_format,
+                             filter_name=libarchive_filter,
+                             options=libarchive_options,
+                             compress_level=compress_level)
     else:
         return TarArchive(fileobj, filename, arcroot, _tar_mode[format],
                           compress_level=compress_level)
@@ -101,12 +104,15 @@ class NewArchiveWrite(libarchive.ArchiveWrite):
 
 
 class TarZstArchive(ArchiveBase):
-    def __init__(self, fileobj, filename, arcroot, mode, compress_level):
+    def __init__(self, fileobj, filename, arcroot, mode, compress_level, format_name, filter_name, options):
         self.fileobj = fileobj
         self.filename = filename
         self.arcroot = arcroot
         self.mode = mode
         self.compress_level = compress_level
+        self.format_name = format_name or 'ustar'
+        self.filter_name = filter_name or 'zstd'
+        self.options = options or _tar_mode['tar.zst']
 
     def __enter__(self):
         if self.mode != 'w':
@@ -114,7 +120,7 @@ class TarZstArchive(ArchiveBase):
         else:
             kwargs = {}
 
-        self.archive = NewArchiveWrite(self.filename, 'ustar', filter_name='zstd', options=self.mode)
+        self.archive = NewArchiveWrite(self.filename, self.format_name, self.filter_name, self.options)
 
         return self
 
