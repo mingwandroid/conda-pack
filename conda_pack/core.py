@@ -19,13 +19,59 @@ from .compat import on_win, default_encoding, find_py_source
 from .formats import archive
 from .prefixes import SHEBANG_REGEX, replace_prefix
 from ._progress import progressbar
+from .utils import (tmp_chdir, get_libarchive_filters, get_libarchive_formats)
 
 formats = {'zip', 'tar.gz', 'tgz', 'tar.bz2', 'tbz2', 'tar'}
-try:
-    import libarchive  # noqa
-    formats.add('tar.zst')
-except Exception:
-    pass
+libarchive_formats = {}
+libarchive_filters = {}
+# Lossy remap
+libarchive_format_to_ext = dict()
+# So reconstructing via 'infer' makes a best guess. Hmm .. we should make a clearer
+# distinction between file extension (includes both a low res indication of format
+# and filter, sometimes) and format (which is much more nuanced from a libarchive
+# perspective where there are many different tar variants for example).
+libarchive_ext_to_format = dict({'.tar': 'gnutar'})
+
+libarchive_fmt_to_ext_remap = dict({'7zip': '7z',
+                                    'ar_svr4': 'ar',
+                                    'ar_bsd': 'ar',
+                                    'cpio_newc': 'cpio',
+                                    'gnutar': 'tar',
+                                    'iso9660': 'iso',
+                                    'mtree_classic': 'mtree',
+                                    'pax_restricted': 'pax',
+                                    'shar_dump': 'shar',
+                                    'v7tar': 'tar'})
+libarchive_flt_to_ext_remap = dict({'bzip2': 'bz2',
+                                    'compress': 'Z',
+                                    'grzip': 'grz',
+                                    'gzip': 'gz',
+                                    'lrzip': 'lrz',
+                                    'lzip': 'lz',
+                                    'lzop': 'lzo',
+                                    'zstd': 'zst'})
+if '--expert-mode' in sys.argv:
+    try:
+        import libarchive  # noqa
+
+        libarchive_formats = get_libarchive_formats()
+        for libarchive_format in libarchive_formats:
+            ext = '.' + libarchive_format
+            if libarchive_format in libarchive_fmt_to_ext_remap:
+                ext = libarchive_fmt_to_ext_remap[libarchive_format]
+            else:
+                ext = libarchive_format
+            libarchive_format_to_ext[libarchive_format] = ext
+
+        libarchive_filters = get_libarchive_filters()
+
+        for libarchive_filter in libarchive_filters:
+            if libarchive_filter in libarchive_flt_to_ext_remap:
+                libarchive_filter = libarchive_flt_to_ext_remap[libarchive_filter]
+            formats.add('tar.' + libarchive_filter)
+
+    except Exception:
+        pass
 
 __all__ = ('CondaPackException', 'CondaEnv', 'File', 'pack', 'formats')
 
@@ -243,28 +289,54 @@ class CondaEnv(object):
         return CondaEnv(self.prefix, files, excluded)
 
     def _output_and_format(self, output=None, format='infer'):
+        file_ext_source = output if output else format
+        ext_all = os.extsep + os.extsep.join(file_ext_source.split(os.extsep)[-2:])
+        try:
+            ext_format = os.extsep + os.extsep.join(file_ext_source.split(os.extsep)[-2:-1])
+        except:
+            ext_format = None
         if output is None and format == 'infer':
             format = 'tar.gz'
         elif format == 'infer':
-            if output.endswith('.zip'):
+            if ext_all.endswith('.zip'):
                 format = 'zip'
-            elif output.endswith('.tar.gz') or output.endswith('.tgz'):
-                format = 'tar.gz'
-            elif output.endswith('.tar.bz2') or output.endswith('.tbz2'):
+#            elif ext_all.endswith('.tar.gz') or output.endswith('.tgz'):
+#                format = 'tar.gz'
+            elif ext_all.endswith('.tar.bz2') or output.endswith('.tbz2'):
                 format = 'tar.bz2'
-            elif output.endswith('.tar'):
+            elif ext_all.endswith('.tar'):
                 format = 'tar'
+            elif ext_all in [v for k, v in libarchive_format_to_ext.items() if v == ext_all]:
+                format = ext_all
+            elif ext_format in [v for k, v in libarchive_format_to_ext.items() if v == ext_format]:
+                format = ext_all
             else:
                 raise CondaPackException("Unknown file extension %r" % output)
-        elif format not in formats:
-            raise CondaPackException("Unknown format %r" % format)
+        else:
+            parts = format.split(os.extsep)
+            if len(parts) > 1:
+                libarchive_format, libarchive_filter = parts[-2:]
+            else:
+                libarchive_format = parts[0]
+                libarchive_filter = None
+            if libarchive_format in [k for k, v in libarchive_format_to_ext.items() if k == libarchive_format]:
+                libarchive_format = libarchive_format_to_ext[libarchive_format]
+            else:
+                raise CondaPackException("Unknown format %r" % libarchive_format)
+            if libarchive_filter in libarchive_filters:
+                if libarchive_filter in libarchive_flt_to_ext_remap:
+                    libarchive_format += os.extsep + libarchive_flt_to_ext_remap[libarchive_filter]
+                else:
+                    libarchive_format += os.extsep + libarchive_filter
 
         if output is None:
-            output = os.extsep.join([self.name, format])
+            output = os.extsep.join([self.name, libarchive_format])
 
         return output, format
 
     def pack(self, output=None, format='infer', arcroot='', dest_prefix=None,
+             libarchive_format=None,
+             libarchive_filter=None, libarchive_options=None,
              verbose=False, force=False, compress_level=4, zip_symlinks=False,
              zip_64=True):
         """Package the conda environment into an archive file.
@@ -313,7 +385,9 @@ class CondaEnv(object):
         arcroot = arcroot.strip(os.path.sep)
 
         # The output path and archive format
-        output, format = self._output_and_format(output, format)
+        output, format = self._output_and_format(output, libarchive_format+
+                                                 ('.'+libarchive_filter if libarchive_filter
+                                                  else '') if libarchive_format else format)
 
         if os.path.exists(output) and not force:
             raise CondaPackException("File %r already exists" % output)
@@ -326,6 +400,9 @@ class CondaEnv(object):
         try:
             with os.fdopen(fd, 'wb') as temp_file:
                 with archive(temp_file, temp_path, arcroot, format,
+                             libarchive_format=libarchive_format,
+                             libarchive_filter=libarchive_filter,
+                             libarchive_options=libarchive_options,
                              compress_level=compress_level,
                              zip_symlinks=zip_symlinks,
                              zip_64=zip_64) as arc:
@@ -383,7 +460,8 @@ class File(object):
 
 
 def pack(name=None, prefix=None, output=None, format='infer',
-         arcroot='', dest_prefix=None, verbose=False, force=False,
+         arcroot='', dest_prefix=None, libarchive_format=None,
+         libarchive_filter=None, libarchive_options=None, verbose=False, force=False,
          compress_level=4, zip_symlinks=False, zip_64=True, filters=None):
     """Package an existing conda environment into an archive file.
 
@@ -458,7 +536,8 @@ def pack(name=None, prefix=None, output=None, format='infer',
                 raise CondaPackException("Unknown filter of kind %r" % kind)
 
     return env.pack(output=output, format=format, arcroot=arcroot,
-                    dest_prefix=dest_prefix,
+                    dest_prefix=dest_prefix, libarchive_format=libarchive_format,
+                    libarchive_filter=libarchive_filter, libarchive_options=libarchive_options,
                     verbose=verbose, force=force,
                     compress_level=compress_level,
                     zip_symlinks=zip_symlinks, zip_64=zip_64)
@@ -829,16 +908,6 @@ def rewrite_conda_meta(source):
 
     out = json.dumps(data, indent=True, sort_keys=True)
     return out.encode()
-
-
-@contextmanager
-def tmp_chdir(dest):
-    curdir = os.getcwd()
-    try:
-        os.chdir(dest)
-        yield
-    finally:
-        os.chdir(curdir)
 
 
 _conda_unpack_template = """\

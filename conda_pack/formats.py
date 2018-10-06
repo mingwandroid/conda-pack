@@ -5,28 +5,27 @@ import tarfile
 import time
 import zipfile
 from io import BytesIO
-from .formats_base import ArchiveBase
-
-_tar_mode = {'tar.gz': 'w:gz',
-             'tgz': 'w:gz',
-             'tar.bz2': 'w:bz2',
-             'tbz2': 'w:bz2',
-             'tar': 'w',
-             'tar.zst': 'zstd:compression-level=22'}
+from .formats_base import ArchiveBase, tar_mode
 
 
-def archive(fileobj, filename, arcroot, format, compress_level=4, zip_symlinks=False,
-            zip_64=True):
+def archive(fileobj, filename, arcroot, format,
+            libarchive_format=None, libarchive_filter=None, libarchive_options=None,
+            compress_level=4, zip_symlinks=False, zip_64=True):
     if format == 'zip':
         return ZipArchive(fileobj, filename, arcroot, zip_symlinks=zip_symlinks,
                           zip_64=zip_64)
-    elif format == 'tar.zst':
-        from .formats_libarchive import TarZstArchive
-        return TarZstArchive(fileobj, filename, arcroot, _tar_mode[format],
-                             compress_level=compress_level)
-    else:
-        return TarArchive(fileobj, filename, arcroot, _tar_mode[format],
+    elif format == 'tar.bz2':
+        return TarArchive(fileobj, filename, arcroot, tar_mode[format],
                           compress_level=compress_level)
+    else:
+        if not libarchive_options and format in tar_mode:
+            libarchive_options = tar_mode[format]
+        from .formats_libarchive import TarZstArchive
+        return TarZstArchive(fileobj, filename, arcroot,
+                             mode=libarchive_options,
+                             compress_level=compress_level,
+                             format_name=libarchive_format,
+                             filter_name=libarchive_filter)
 
 
 class TarArchive(ArchiveBase):

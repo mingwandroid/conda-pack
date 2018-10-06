@@ -1,12 +1,13 @@
 import libarchive
 import os
+import sys
 import tempfile
-from .formats_base import ArchiveBase
-from .core import tmp_chdir
+from .formats_base import ArchiveBase, tar_mode
+from .utils import tmp_chdir
 
 
 class _NewArchiveWrite(libarchive.write.ArchiveWrite):
-    def __init__(self, filename, format_name, filter_name=None, options=''):
+    def __init__(self, filename, format_name, filter_name=None, mode=''):
         from libarchive import ffi
         self.filename = filename
         self.archive_p = ffi.write_new()
@@ -14,10 +15,10 @@ class _NewArchiveWrite(libarchive.write.ArchiveWrite):
         getattr(ffi, 'write_set_format_' + format_name)(self.archive_p)
         if filter_name:
             getattr(ffi, 'write_add_filter_' + filter_name)(self.archive_p)
-        if options:
-            if not isinstance(options, bytes):
-                options = options.encode('utf-8')
-            ffi.write_set_options(self.archive_p, options)
+        if mode:
+            if not isinstance(mode, bytes):
+                mode = mode.encode('utf-8')
+            ffi.write_set_options(self.archive_p, mode)
         ffi.write_open_filename_w(self.archive_p, self.filename)
 
     def close(self):
@@ -27,16 +28,18 @@ class _NewArchiveWrite(libarchive.write.ArchiveWrite):
 
 
 class TarZstArchive(ArchiveBase):
-    def __init__(self, fileobj, filename, arcroot, mode, compress_level):
+    def __init__(self, fileobj, filename, arcroot, mode, compress_level, format_name, filter_name):
         self.fileobj = fileobj
         self.filename = filename
         self.arcroot = arcroot
         self.mode = mode
         self.compress_level = compress_level
+        self.format_name = format_name or 'gnutar'
+        self.filter_name = filter_name if format_name else 'zstd'
 
     def __enter__(self):
-        self.archive = _NewArchiveWrite(self.filename, 'ustar', filter_name='zstd',
-                                        options=self.mode)
+        self.archive = _NewArchiveWrite(self.filename, self.format_name, self.filter_name,
+                                        mode=self.mode)
         return self
 
     def __exit__(self, type, value, traceback):

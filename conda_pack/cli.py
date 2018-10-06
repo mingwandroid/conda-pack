@@ -5,7 +5,8 @@ import sys
 import traceback
 
 from . import __version__
-from .core import pack, CondaPackException, context, formats
+from .core import (CondaPackException, context, formats, pack,
+                   libarchive_formats, libarchive_filters)
 
 
 class MultiAppendAction(argparse.Action):
@@ -80,6 +81,26 @@ def build_parser():
     parser.add_argument("--no-zip-64",
                         action="store_true",
                         help="Disable ZIP64 extensions.")
+    parser.add_argument("--expert-mode",
+                        action="store_true",
+                        help=("Allows low-level access to all python-libarchive-c "
+                              "low-level formats, filters and options"))
+    if "--expert-mode" in sys.argv:
+        parser.add_argument("--libarchive-format",
+                            choices=sorted(list(libarchive_formats)),
+                            default='tar.zstd',
+                            help=("Specify the libarchive format at a low-level, "
+                                  "allowed values: 'gnutar', '7zip', 'zip', "
+                                  "overrides --format"))
+        parser.add_argument("--libarchive-filter",
+                            choices=sorted(list(libarchive_filters)),
+                            help=("Specify the libarchive filter at a low-level, "
+                                  "sample values: zstd, "
+                                  "overrides --format"))
+        parser.add_argument("--libarchive-options",
+                            help=("Specify the libarchive format at a low-level, "
+                                  "sample values: zstd:compression-level=22, "
+                                  "overrides --format"))
     parser.add_argument("--exclude",
                         action=MultiAppendAction,
                         metavar="PATTERN",
@@ -122,6 +143,10 @@ def main(args=None, pack=pack):
         sys.exit(0)
 
     try:
+        if not 'libarchive_format' in args:
+            args.libarchive_format = None
+            args.libarchive_filter = None
+            args.libarchive_options = None
         with context.set_cli():
             pack(name=args.name,
                  prefix=args.prefix,
@@ -133,6 +158,9 @@ def main(args=None, pack=pack):
                  zip_64=not args.no_zip_64,
                  arcroot=args.arcroot,
                  dest_prefix=args.dest_prefix,
+                 libarchive_format=args.libarchive_format,
+                 libarchive_filter=args.libarchive_filter,
+                 libarchive_options=args.libarchive_options,
                  verbose=not args.quiet,
                  filters=args.filters)
     except CondaPackException as e:
